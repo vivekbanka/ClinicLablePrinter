@@ -306,16 +306,177 @@ const css = `
   }
 `;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function parseMockDL() {
-  return new Promise((resolve) =>
-    setTimeout(() => resolve({
-      firstName: "JOHN", lastName: "DOE", middleName: "WILLIAM",
-      dob: "1985-06-14", dlNumber: "TX12345678",
-      address: "1234 MAIN STREET", city: "HOUSTON", state: "TX", zip: "77001",
-      sex: "M", height: "5'11\"", eyeColor: "BRO", expires: "2028-06-14",
-    }), 1800)
-  );
+// ─── ZXing loader (CDN — no npm needed) ───────────────────────────────────────
+let _zxingReady = null;
+function loadZXing() {
+  if (_zxingReady) return _zxingReady;
+  _zxingReady = new Promise((resolve, reject) => {
+    if (window.ZXing) { resolve(window.ZXing); return; }
+    const s = document.createElement("script");
+    s.src = "https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js";
+    s.onload  = () => resolve(window.ZXing);
+    s.onerror = () => reject(new Error("Failed to load ZXing"));
+    document.head.appendChild(s);
+  });
+  return _zxingReady;
+}
+
+// ─── AAMVA field map ──────────────────────────────────────────────────────────
+// Standard AAMVA DL/ID subfile element IDs
+const AAMVA = {
+  DCS: "lastName",     // Family name
+  DAC: "firstName",    // First name
+  DAD: "middleName",   // Middle name
+  DBB: "dob",          // Date of birth  MMDDYYYY
+  DAQ: "dlNumber",     // DL / ID number
+  DAG: "address",      // Street address
+  DAI: "city",         // City
+  DAJ: "state",        // State
+  DAK: "zip",          // Postal code
+  DBC: "sexCode",      // 1=M 2=F 9=Not specified
+  DAU: "height",       // Height (e.g. 511 in)
+  DAY: "eyeColor",     // Eye color
+  DBA: "expires",      // Expiry MMDDYYYY
+  DAA: "fullName",     // Full name (some states put it here)
+  DBD: "issued",       // Issue date
+  DCG: "country",      // Country
+};
+
+function aamvaDateToISO(raw) {
+  // Dates come as MMDDYYYY or YYYYMMDD
+  if (!raw || raw.length < 8) return raw;
+  raw = raw.replace(/\D/g, "");
+  if (raw.length === 8) {
+    // Detect format: if first 4 digits > 1200 it's likely YYYY first
+    const first4 = parseInt(raw.substring(0, 4), 10);
+    if (first4 > 1200) {
+      // YYYYMMDD
+      return `${raw.substring(0,4)}-${raw.substring(4,6)}-${raw.substring(6,8)}`;
+    } else {
+      // MMDDYYYY
+      return `${raw.substring(4,8)}-${raw.substring(0,2)}-${raw.substring(2,4)}`;
+    }
+  }
+  return raw;
+}
+
+function parseAAMVA(raw) {
+  const result = {};
+
+  // Split by newline or CR
+  const lines = raw.split(/[\r\n]+/);
+
+  for (const line of lines) {
+    if (line.length < 3) continue;
+    const code  = line.substring(0, 3);
+    const value = line.substring(3).trim();
+    if (!value) continue;
+
+    const field = AAMVA[code];
+    if (field) {
+      result[field] = value;
+    }
+  }
+
+  // Normalize dates
+  if (result.dob)     result.dob     = aamvaDateToISO(result.dob);
+  if (result.expires) result.expires = aamvaDateToISO(result.expires);
+  if (result.issued)  result.issued  = aamvaDateToISO(result.issued);
+
+  // Normalize sex
+  if (result.sexCode) {
+    result.sex = result.sexCode === "1" ? "M" : result.sexCode === "2" ? "F" : "U";
+    delete result.sexCode;
+  }
+
+  // Some states put full name in DAA as "LAST,FIRST MIDDLE"
+  if (!result.lastName && result.fullName) {
+    const parts = result.fullName.split(",");
+    result.lastName  = (parts[0] || "").trim();
+    const rest       = (parts[1] || "").trim().split(" ");
+    result.firstName  = (rest[0] || "").trim();
+    result.middleName = rest.slice(1).join(" ").trim();
+    delete result.fullName;
+  }
+
+  // Clean zip — AAMVA zips can be "77001-0000", keep full or trim
+  if (result.zip) result.zip = result.zip.substring(0, 5);
+
+  // Height — AAMVA: "511 in" or "175 cm"
+  if (result.height) {
+    const m = result.height.match(/(\d+)/);
+    if (m) {
+      const raw = parseInt(m[1], 10);
+      if (result.height.toLowerCase().includes("in") || raw > 100) {
+        const feet = Math.floor(raw / 100);
+        const inches = raw % 100;
+        result.height = `${feet}'${inches}"`;
+      }
+    }
+  }
+
+  return result;
+}
+
+// ─── Main DL parser using ZXing PDF417 ───────────────────────────────────────
+async function parseDL(imageFile) {
+  const ZXing = await loadZXing();
+
+  // Draw image onto canvas so ZXing can decode it
+  const img = await new Promise((res, rej) => {
+    const i = new Image();
+    i.onload  = () => res(i);
+    i.onerror = rej;
+    i.src = URL.createObjectURL(imageFile);
+  });
+
+  const canvas  = document.createElement("canvas");
+  canvas.width  = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0);
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const hints     = new Map();
+
+  // Try multiple decode attempts with different scales for better accuracy
+  const attempts = [
+    { w: canvas.width,       h: canvas.height },
+    { w: canvas.width * 1.5, h: canvas.height * 1.5 },
+    { w: canvas.width * 0.75, h: canvas.height * 0.75 },
+  ];
+
+  for (const { w, h } of attempts) {
+    try {
+      const c2  = document.createElement("canvas");
+      c2.width  = Math.round(w);
+      c2.height = Math.round(h);
+      c2.getContext("2d").drawImage(img, 0, 0, c2.width, c2.height);
+      const id2 = c2.getContext("2d").getImageData(0, 0, c2.width, c2.height);
+
+      const luminanceSource = new ZXing.RGBLuminanceSource(
+        id2.data, c2.width, c2.height
+      );
+      const bitmap = new ZXing.BinaryBitmap(
+        new ZXing.HybridBinarizer(luminanceSource)
+      );
+
+      const reader = new ZXing.MultiFormatReader();
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.PDF_417]);
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+      reader.setHints(hints);
+
+      const result = reader.decode(bitmap);
+      if (result && result.getText()) {
+        const parsed = parseAAMVA(result.getText());
+        if (parsed.lastName || parsed.firstName) return parsed;
+      }
+    } catch {
+      // Try next scale
+    }
+  }
+
+  throw new Error("No PDF417 barcode found. Make sure you photograph the BACK of the license.");
 }
 
 function generateSpecimenId() {
@@ -431,6 +592,8 @@ export default function VCareLabApp() {
     return () => clearTimeout(t);
   }, [status]);
 
+  const [scanHint, setScanHint] = useState(null);
+
   const handleFile = useCallback(async (file) => {
     if (!file?.type.startsWith("image/")) {
       setStatus({ type:"error", msg:"Please upload a photo of a driver's license." });
@@ -438,20 +601,23 @@ export default function VCareLabApp() {
     }
     setImagePreview(URL.createObjectURL(file));
     setPatient(null);
+    setScanHint(null);
     setParsing(true);
-    setStatus({ type:"info", msg:"Scanning license…" });
+    setStatus({ type:"info", msg:"Decoding PDF417 barcode — this may take a moment…" });
     try {
-      const data = await parseMockDL(file);
+      const data = await parseDL(file);
       setPatient(data);
       setSpecimenId(generateSpecimenId());
-      setStatus({ type:"success", msg:"✓ License parsed — review the info then tap Print." });
-    } catch {
-      setStatus({ type:"error", msg:"Could not parse license. Try a clearer photo of the back barcode." });
+      setScanHint(null);
+      setStatus({ type:"success", msg:"✓ License parsed successfully — review and confirm info below." });
+    } catch (err) {
+      const hint = err.message || "Barcode not detected.";
+      setScanHint(hint);
+      setStatus({ type:"error", msg:"Could not read barcode — " + hint });
     } finally {
       setParsing(false);
     }
   }, []);
-
   const handleDrop = useCallback((e) => {
     e.preventDefault(); setDragOver(false);
     handleFile(e.dataTransfer.files[0]);
@@ -534,7 +700,19 @@ export default function VCareLabApp() {
                   ) : imagePreview ? (
                     <><img src={imagePreview} alt="License" className="scan-preview" /><div className="scan-sub" style={{marginTop:10}}>Tap to replace</div></>
                   ) : (
-                    <><span className="scan-icon">🪪</span><div className="scan-label">Tap to photograph or drop license image</div><div className="scan-sub">Back camera · PDF417 barcode on rear of license</div></>
+                    <>
+                      <span className="scan-icon">🪪</span>
+                      <div className="scan-label">Photograph the BACK of the license</div>
+                      <div className="scan-sub">Hold steady · Good lighting · Fill the frame · PDF417 barcode</div>
+                      {scanHint && (
+                        <div style={{marginTop:14,padding:"10px 16px",background:"#fff0f3",border:"1px solid #ffc2cc",borderRadius:9,fontSize:13,color:"#cc0033"}}>
+                          ⚠ {scanHint}
+                        </div>
+                      )}
+                      <div style={{marginTop:16,fontSize:12,color:"#7a9abc",lineHeight:1.7}}>
+                        💡 <strong>Tips:</strong> Use rear camera · Avoid glare · Keep license flat · Barcode is on the <strong>back</strong>
+                      </div>
+                    </>
                   )}
                   <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])} />
                 </div>
