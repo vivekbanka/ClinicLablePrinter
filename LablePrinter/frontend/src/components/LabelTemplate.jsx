@@ -1,13 +1,13 @@
 /**
  * LabelTemplate Component
  * Renders a visual blood vial label preview for blood test tubes
- * Dimensions: 13x75mm, 13x100mm, or 16x100mm
- * Shows only Name, Collection Date, and DOB
+ * Small label: 0.66" x 3.4" (Brother DK-1203) - shows only Name and DOB
+ * Regular label: 2" x 1" - shows Name, Collection Date, DOB, and footer
  */
 
 import React from 'react';
 
-export default function LabelTemplate({ labelData, scale = 1 }) {
+export default function LabelTemplate({ labelData, scale = 1, isSmall = false }) {
   const {
     patientName = '',
     dob = '',
@@ -23,6 +23,55 @@ export default function LabelTemplate({ labelData, scale = 1 }) {
     transformOrigin: 'top left',
   };
 
+  if (isSmall) {
+    // Small label format (0.66" x 3.4") - only name and DOB
+    return (
+      <div className="blood-label fade-in" style={style}>
+        <div className="blood-label-body" style={{ 
+          width: '245px', 
+          height: '48px', 
+          border: '1px solid #000',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '6px 8px',
+          backgroundColor: '#fff',
+          fontSize: '10px'
+        }}>
+          {/* Patient Name */}
+          <div style={{ 
+            fontSize: '11px', 
+            fontWeight: '900', 
+            letterSpacing: '0.01em', 
+            lineHeight: '1.1', 
+            color: '#000', 
+            wordBreak: 'break-word',
+            marginBottom: '3px',
+            textAlign: 'center',
+            width: '100%',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis'
+          }}>
+            {displayName}
+          </div>
+          
+          {/* Date of Birth */}
+          <div style={{ 
+            fontSize: '8px', 
+            color: '#333', 
+            fontWeight: '600',
+            textAlign: 'center',
+            width: '100%'
+          }}>
+            DOB: {displayDob}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Regular label format (2" x 1") - full information
   return (
     <div className="blood-label fade-in" style={style}>
       {/* Label Content */}

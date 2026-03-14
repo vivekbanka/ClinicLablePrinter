@@ -16,6 +16,14 @@ const LABEL = {
   PADDING: 3,
 };
 
+// Small label dimensions for Brother QL-810W DK-1203: 0.66" x 3.4" at 72 DPI (PDF points)
+const SMALL_LABEL = {
+  WIDTH: 245,    // 3.4 inches * 72 points/inch
+  HEIGHT: 48,    // 0.66 inches * 72 points/inch
+  MARGIN: 3,     // 3pt margin
+  PADDING: 2,
+};
+
 /**
  * Generate a Code128 barcode as PNG buffer
  * @param {string} text - Text to encode
@@ -225,6 +233,68 @@ async function generateLabel(data) {
 }
 
 /**
+ * Generate small 0.66" x 3.4" label for Brother QL-810W DK-1203 with only name and DOB
+ * @param {object} data - Label data
+ * @param {string} data.patientName - Full patient name
+ * @param {string} data.dob - Date of birth
+ * @returns {Promise<Buffer>} PDF buffer
+ */
+async function generateSmallLabel(data) {
+  const { patientName, dob } = data;
+
+  logger.info(`Generating small label for: ${patientName}`);
+
+  return new Promise((resolve, reject) => {
+    const buffers = [];
+
+    const doc = new PDFDocument({
+      size: [SMALL_LABEL.WIDTH, SMALL_LABEL.HEIGHT],
+      margins: { top: SMALL_LABEL.MARGIN, bottom: SMALL_LABEL.MARGIN, left: SMALL_LABEL.MARGIN, right: SMALL_LABEL.MARGIN },
+      autoFirstPage: true,
+      compress: false,
+    });
+
+    doc.on('data', (chunk) => buffers.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
+    doc.on('error', reject);
+
+    const W = SMALL_LABEL.WIDTH;
+    const H = SMALL_LABEL.HEIGHT;
+    const M = SMALL_LABEL.MARGIN;
+
+    // ── Background ────────────────────────────────────────────────────────
+    doc.rect(0, 0, W, H).fill('#FFFFFF');
+
+    // ── Border ────────────────────────────────────────────────────────────
+    doc.rect(1, 1, W - 2, H - 2).lineWidth(0.5).stroke('#000000');
+
+    // ── Patient Name (large text) ───────────────────────────────────────
+    doc.font('Helvetica-Bold')
+       .fontSize(12)
+       .fillColor('#000000')
+       .text(
+         truncate(patientName.toUpperCase(), 35),
+         M,
+         M + 8,
+         { width: W - M * 2, align: 'center', lineBreak: false }
+       );
+
+    // ── DOB ───────────────────────────────────────────────────────────────
+    doc.font('Helvetica')
+       .fontSize(9)
+       .fillColor('#333333')
+       .text(
+         `DOB: ${dob}`,
+         M,
+         M + 26,
+         { width: W - M * 2, align: 'center', lineBreak: false }
+       );
+
+    doc.end();
+  });
+}
+
+/**
  * Generate ZPL label for Zebra printers
  * ZPL for 2" x 1" label at 203 DPI = 406 x 203 dots
  */
@@ -279,4 +349,4 @@ function formatCollectionTime(timeStr) {
   }
 }
 
-module.exports = { generateLabel, generateZPL, generateBarcode, generateQRCode };
+module.exports = { generateLabel, generateSmallLabel, generateZPL, generateBarcode, generateQRCode };

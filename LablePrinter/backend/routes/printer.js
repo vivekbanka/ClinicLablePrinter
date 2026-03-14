@@ -7,7 +7,7 @@ const {
   printZPL,
   testPrinterConnection
 } = require('../services/printerService');
-const { generateLabel, generateZPL } = require('../services/labelGenerator');
+const { generateLabel, generateSmallLabel, generateZPL } = require('../services/labelGenerator');
 const { logger } = require('../middleware/logger');
 
 /**
@@ -63,6 +63,7 @@ router.post('/printers/test', async (req, res) => {
  * POST /api/print
  * Send a label directly to a WiFi/IPP printer
  * Body: { printerUrl, labelData: { patientName, dob, sampleId, collectionTime, licenseNumber }, format?, copies? }
+ * format options: 'pdf' (2x1"), 'small' (0.66x3.4"), 'zpl'
  */
 router.post('/print', async (req, res) => {
   const { printerUrl, labelData, format = 'pdf', copies = 1 } = req.body;
@@ -88,12 +89,23 @@ router.post('/print', async (req, res) => {
       return res.json({ success: true, ...result });
     }
 
-    // PDF via IPP
-    const pdfBuffer = await generateLabel(labelData);
+    let pdfBuffer;
+    let mediaSize;
+
+    if (format === 'small') {
+      // Small label for Brother QL-810W (0.66" x 3.4")
+      pdfBuffer = await generateSmallLabel(labelData);
+      mediaSize = 'custom_3.4x0.66in_3.4x0.66in';
+    } else {
+      // Regular PDF (2" x 1")
+      pdfBuffer = await generateLabel(labelData);
+      mediaSize = 'custom_2x1in_2x1in';
+    }
+
     const result = await printPDF(printerUrl, pdfBuffer, {
       copies,
       jobName: `Lab Label - ${labelData.sampleId}`,
-      mediaSize: 'custom_2x1in_2x1in'
+      mediaSize
     });
 
     res.json({ success: true, ...result });
@@ -112,21 +124,33 @@ router.post('/print', async (req, res) => {
  * POST /api/print/pdf-stream
  * Generate label PDF and return as download for browser printing
  * This allows the browser to open the print dialog with the generated PDF
+ * Body: { labelData, format? }
+ * format options: 'pdf' (2x1"), 'small' (0.66x3.4")
  */
 router.post('/print/pdf-stream', async (req, res) => {
-  const { labelData } = req.body;
+  const { labelData, format = 'pdf' } = req.body;
 
   if (!labelData) {
     return res.status(400).json({ success: false, error: 'labelData is required' });
   }
 
   try {
-    const pdfBuffer = await generateLabel(labelData);
+    let pdfBuffer;
+    let filename;
+
+    if (format === 'small') {
+      pdfBuffer = await generateSmallLabel(labelData);
+      filename = `small-label-${labelData.sampleId || 'sample'}.pdf`;
+    } else {
+      pdfBuffer = await generateLabel(labelData);
+      filename = `label-${labelData.sampleId || 'sample'}.pdf`;
+    }
 
     res.set('Content-Type', 'application/pdf');
-    res.set('Content-Disposition', `inline; filename="label-${labelData.sampleId || 'sample'}.pdf"`);
+    res.set('Content-Disposition', `inline; filename="${filename}"`);
     res.set('Content-Length', pdfBuffer.length);
     res.set('Cache-Control', 'no-cache');
+    res.set('X-Label-Format', format);
     res.send(pdfBuffer);
   } catch (err) {
     logger.error(`PDF stream error: ${err.message}`);

@@ -69,24 +69,18 @@ export default function LabelPreview() {
   const printViaBrowser = async () => {
     setPrinting(true);
     try {
-      // Create a print-friendly version of the label
+      // Create a print-friendly version of the small label
       const printContent = document.createElement('div');
       printContent.innerHTML = `
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; font-family: 'Inter', sans-serif;">
-          <div style="width: 98px; height: 400px; background: white; border: 1px solid #ddd; border-radius: 4px; display: flex; flex-direction: column; page-break-after: always;">
-            <div style="flex: 1; padding: 6px 4px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
-              <div style="font-size: 10px; font-weight: 900; letter-spacing: 0.01em; line-height: 1.1; color: #000; word-break: break-word; margin-bottom: 6px;">
+          <div style="width: 245px; height: 48px; background: white; border: 1px solid #000; display: flex; flex-direction: column; page-break-after: always;">
+            <div style="flex: 1; padding: 8px 3px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
+              <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.01em; line-height: 1.1; color: #000; word-break: break-word; margin-bottom: 4px;">
                 ${(labelData.patientName || 'PATIENT NAME').toUpperCase()}
               </div>
-              <div style="font-size: 8px; color: #111; font-weight: 700; margin-bottom: 4px;">
-                <strong>COLLECTED:</strong> ${formatDate(labelData.collectionTime)}
+              <div style="font-size: 9px; color: #333; font-weight: 600;">
+                DOB: ${formatDate(labelData.dob)}
               </div>
-              <div style="font-size: 8px; color: #111; font-weight: 600;">
-                <strong>DOB:</strong> ${formatDate(labelData.dob)}
-              </div>
-            </div>
-            <div style="background: #1a237e; color: white; font-size: 5px; font-weight: 700; text-align: center; padding: 3px 2px; letter-spacing: 0.3px;">
-              ✚ BLOOD SAMPLE &nbsp;•&nbsp; HANDLE WITH CARE
             </div>
           </div>
         </div>
@@ -131,7 +125,7 @@ export default function LabelPreview() {
 
       setPrintSuccess(true);
       setReprintCount(c => c + 1);
-      showToast('success', 'Print Dialog Opened', 'Select your printer and set paper to 2" × 1"');
+      showToast('success', 'Print Dialog Opened', 'Select your printer and set paper to 0.66" × 3.4" (Brother DK-1203)');
     } catch (err) {
       showToast('error', 'Print Failed', err.message);
     } finally {
@@ -157,7 +151,7 @@ export default function LabelPreview() {
       const result = await sendPrintJob(
         settings.printerUrl,
         labelData,
-        { format: settings.method === 'zpl' ? 'zpl' : 'pdf', copies: settings.copies }
+        { format: 'small', copies: settings.copies }
       );
 
       if (result.success) {
@@ -222,7 +216,7 @@ export default function LabelPreview() {
 
       {/* Label Preview */}
       <div className="label-preview-wrapper">
-        <LabelTemplate labelData={labelData} scale={1} />
+        <LabelTemplate labelData={labelData} scale={1} isSmall={true} />
       </div>
 
       {/* Patient summary */}
@@ -233,7 +227,6 @@ export default function LabelPreview() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem 1rem' }}>
           <SummaryField label="Patient" value={labelData.patientName} />
           <SummaryField label="DOB" value={labelData.dob} />
-          <SummaryField label="Collected" value={formatDate(labelData.collectionTime)} />
         </div>
       </div>
 

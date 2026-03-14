@@ -1,15 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const { generateLabel, generateZPL } = require('../services/labelGenerator');
+const { generateLabel, generateSmallLabel, generateZPL } = require('../services/labelGenerator');
 const { validateLabel } = require('../middleware/validation');
 const { logger } = require('../middleware/logger');
 
 /**
  * POST /api/generate-label
- * Generate a 2x1 inch vial label as PDF
+ * Generate a label as PDF (supports regular, small, or zpl formats)
  *
  * Body: { patientName, dob, sampleId, collectionTime, licenseNumber?, format? }
+ * format options: 'pdf' (2x1"), 'small' (0.66x3.4"), 'zpl'
  * Returns: PDF binary stream or ZPL string
  */
 router.post('/generate-label', validateLabel, async (req, res) => {
@@ -20,7 +21,7 @@ router.post('/generate-label', validateLabel, async (req, res) => {
       sampleId,
       collectionTime,
       licenseNumber,
-      format = 'pdf'   // 'pdf' | 'zpl'
+      format = 'pdf'   // 'pdf' | 'small' | 'zpl'
     } = req.body;
 
     const labelData = {
@@ -40,13 +41,25 @@ router.post('/generate-label', validateLabel, async (req, res) => {
       return res.send(zplData);
     }
 
-    // Default: PDF
+    if (format === 'small') {
+      // Small label for Brother QL-810W (0.66" x 3.4") - only name and DOB
+      const pdfBuffer = await generateSmallLabel(labelData);
+      res.set('Content-Type', 'application/pdf');
+      res.set('Content-Disposition', `inline; filename="small-label-${labelData.sampleId}.pdf"`);
+      res.set('Content-Length', pdfBuffer.length);
+      res.set('X-Sample-Id', labelData.sampleId);
+      res.set('X-Label-Format', 'small');
+      return res.send(pdfBuffer);
+    }
+
+    // Default: Regular PDF (2" x 1")
     const pdfBuffer = await generateLabel(labelData);
 
     res.set('Content-Type', 'application/pdf');
     res.set('Content-Disposition', `inline; filename="label-${labelData.sampleId}.pdf"`);
     res.set('Content-Length', pdfBuffer.length);
     res.set('X-Sample-Id', labelData.sampleId);
+    res.set('X-Label-Format', 'regular');
     res.send(pdfBuffer);
 
   } catch (err) {
