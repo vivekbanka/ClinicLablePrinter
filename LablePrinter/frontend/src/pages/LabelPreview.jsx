@@ -65,42 +65,104 @@ export default function LabelPreview() {
     );
   }
 
+  // ── Print via Backend PDF (Alternate Solution) ───────────────────────────────
+  const printViaPDF = async () => {
+    setPrinting(true);
+    try {
+      // Generate PDF from backend
+      const response = await fetch('/api/print/pdf-stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          labelData,
+          format: 'small'
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF');
+      }
+
+      const blob = await response.blob();
+      const pdfUrl = URL.createObjectURL(blob);
+
+      // Create a link to download/open the PDF
+      const link = document.createElement('a');
+      link.href = pdfUrl;
+      link.target = '_blank';
+      link.download = `label-${labelData.sampleId || 'small'}.pdf`;
+      
+      // Open in new tab for printing
+      window.open(pdfUrl, '_blank');
+
+      setPrintSuccess(true);
+      setReprintCount(c => c + 1);
+      showToast('success', 'PDF Generated', 'Opening PDF for printing...');
+    } catch (err) {
+      showToast('error', 'PDF Failed', err.message);
+    } finally {
+      setPrinting(false);
+    }
+  };
+
   // ── Print via Browser (window.print) ───────────────────────────────────────
   const printViaBrowser = async () => {
     setPrinting(true);
     try {
-      // Create a clean print version using the new print media query
+      // Create a simple mobile print solution
       const printContent = document.createElement('div');
       printContent.innerHTML = `
-        <div class="label" style="border: 1px solid #000; background: white; flex-direction: column; text-align: center;">
-          <div style="font-size: 14px; font-weight: 900; letter-spacing: 0.01em; line-height: 1.1; color: #000; margin-bottom: 4px; white-space: nowrap;">
-            ${(labelData.patientName || 'PATIENT NAME').toUpperCase()}
-          </div>
-          <div style="font-size: 10px; color: #333; font-weight: 600; line-height: 1.1;">
-            DOB: ${formatDate(labelData.dob)}
-          </div>
-        </div>
+        <html>
+          <head>
+            <style>
+              @page {
+                size: 3.5in 1.1in;
+                margin: 0;
+              }
+              body {
+                margin: 0;
+                padding: 0;
+                width: 3.5in;
+                height: 1.1in;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border: 1px solid #000;
+                background: white;
+                flex-direction: column;
+                text-align: center;
+                font-family: 'Inter', sans-serif;
+              }
+              .name {
+                font-size: 14px;
+                font-weight: 900;
+                letter-spacing: 0.01em;
+                line-height: 1.1;
+                color: #000;
+                margin-bottom: 4px;
+                white-space: nowrap;
+              }
+              .dob {
+                font-size: 10px;
+                color: #333;
+                font-weight: 600;
+                line-height: 1.1;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="name">${(labelData.patientName || 'PATIENT NAME').toUpperCase()}</div>
+            <div class="dob">DOB: ${formatDate(labelData.dob)}</div>
+          </body>
+        </html>
       `;
 
       // Create a new window for printing
       const printWindow = window.open('', '_blank');
       if (printWindow) {
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>Blood Label - ${labelData.patientName || 'Patient'}</title>
-            <style>
-              @page { margin: 0; size: auto; }
-              body { margin: 0; padding: 20px; }
-              @media print { body { padding: 0; } }
-            </style>
-          </head>
-          <body>
-            ${printContent.innerHTML}
-          </body>
-          </html>
-        `);
+        printWindow.document.write(printContent.innerHTML);
         printWindow.document.close();
         
         // Wait for content to load, then show print dialog
@@ -113,7 +175,12 @@ export default function LabelPreview() {
       } else {
         // Fallback: print current window with just the label
         const originalContent = document.body.innerHTML;
-        document.body.innerHTML = printContent.innerHTML;
+        document.body.innerHTML = `
+          <div style="margin: 0; padding: 0; width: 3.5in; height: 1.1in; display: flex; align-items: center; justify-content: center; border: 1px solid #000; background: white; flex-direction: column; text-align: center; font-family: 'Inter', sans-serif;">
+            <div style="font-size: 14px; font-weight: 900; letter-spacing: 0.01em; line-height: 1.1; color: #000; margin-bottom: 4px; white-space: nowrap;">${(labelData.patientName || 'PATIENT NAME').toUpperCase()}</div>
+            <div style="font-size: 10px; color: #333; font-weight: 600; line-height: 1.1;">DOB: ${formatDate(labelData.dob)}</div>
+          </div>
+        `;
         window.print();
         document.body.innerHTML = originalContent;
         window.location.reload();
@@ -241,6 +308,23 @@ export default function LabelPreview() {
           }}
           loading={printing}
           onClick={() => setPrintDialogVisible(true)}
+        />
+
+        <Button
+          label="Print via PDF (Mobile Friendly)"
+          icon="pi pi-file-pdf"
+          className="p-button-outlined"
+          style={{
+            width: '100%',
+            padding: '0.8rem',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+            background: 'var(--lab-success)',
+            borderColor: 'var(--lab-success)',
+            color: 'white'
+          }}
+          loading={printing}
+          onClick={printViaPDF}
         />
 
         <div style={{ display: 'flex', gap: '0.6rem' }}>

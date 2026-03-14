@@ -24,13 +24,69 @@ export default function ScanPage() {
         throw new Error('Could not parse license data');
       }
 
+      // Complete scan and generate PDF automatically
       handleScanComplete(result.data);
+      
+      // Generate PDF immediately after successful scan
+      await generatePDF(result.data);
+      
+      // Navigate to preview
+      navigate('/preview');
     } catch (err) {
       console.error('Parse error:', err);
       const msg = err.message || 'Failed to parse barcode';
       setParseError(msg);
       showToast('error', 'Parse Failed', msg);
       setParsing(false);
+    }
+  };
+
+  // Auto-generate PDF function
+  const generatePDF = async (scanData) => {
+    try {
+      // Format DOB to DD-MMM-YYYY
+      const formatDOB = (dob) => {
+        if (!dob) return '';
+        try {
+          const date = new Date(dob);
+          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          const day = String(date.getDate()).padStart(2, '0');
+          const month = months[date.getMonth()];
+          const year = date.getFullYear();
+          return `${day}-${month}-${year}`;
+        } catch {
+          return dob; // Return original if parsing fails
+        }
+      };
+
+      const response = await fetch('/api/print/pdf-stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          labelData: {
+            patientName: `${scanData.firstName} ${scanData.lastName}`,
+            dob: formatDOB(scanData.dateOfBirth || scanData.dob),
+            sampleId: scanData.sampleId || `AUTO-${Date.now()}`,
+            collectionTime: new Date().toISOString()
+          },
+          format: 'small'
+        }),
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const pdfUrl = URL.createObjectURL(blob);
+        
+        // Open PDF in new tab for immediate printing
+        window.open(pdfUrl, '_blank');
+        
+        showToast('success', 'PDF Ready', 'Label PDF opened for printing');
+      }
+    } catch (err) {
+      console.error('PDF generation error:', err);
+      // Don't show error to user, just continue to preview
     }
   };
 

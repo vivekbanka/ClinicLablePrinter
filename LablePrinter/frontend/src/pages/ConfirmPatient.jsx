@@ -58,7 +58,7 @@ export default function ConfirmPatient() {
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validate()) return;
 
     const confirmedData = {
@@ -72,7 +72,76 @@ export default function ConfirmPatient() {
     };
 
     handleConfirm(confirmedData);
+    
+    // Generate PDF automatically for manual entry
+    await generatePDF({
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      dob: dob.trim(),
+      sampleId: `MANUAL-${Date.now()}`,
+      collectionTime
+    });
+    
     navigate('/label');
+  };
+
+  // Auto-generate PDF function for manual entry
+  const generatePDF = async (data) => {
+    try {
+      // Format DOB to DD-MMM-YYYY
+      const formatDOB = (dob) => {
+        if (!dob) return '';
+        try {
+          // Handle various input formats
+          let date;
+          if (dob.includes('/')) {
+            // MM/DD/YYYY format
+            const [m, d, y] = dob.split('/');
+            date = new Date(`${y}-${m}-${d}`);
+          } else {
+            // Try parsing as-is
+            date = new Date(dob);
+          }
+          
+          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          const day = String(date.getDate()).padStart(2, '0');
+          const month = months[date.getMonth()];
+          const year = date.getFullYear();
+          return `${day}-${month}-${year}`;
+        } catch {
+          return dob; // Return original if parsing fails
+        }
+      };
+
+      const response = await fetch('/api/print/pdf-stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          labelData: {
+            patientName: `${data.firstName} ${data.lastName}`,
+            dob: formatDOB(data.dob),
+            sampleId: data.sampleId,
+            collectionTime: data.collectionTime
+          },
+          format: 'small'
+        }),
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const pdfUrl = URL.createObjectURL(blob);
+        
+        // Open PDF in new tab for immediate printing
+        window.open(pdfUrl, '_blank');
+        
+        showToast('success', 'PDF Ready', 'Label PDF opened for printing');
+      }
+    } catch (err) {
+      console.error('PDF generation error:', err);
+      // Don't show error to user, just continue
+    }
   };
 
   const aamvaVersion = patientData?.aamvaVersion;
