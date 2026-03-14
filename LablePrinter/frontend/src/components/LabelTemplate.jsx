@@ -24,24 +24,24 @@ export default function LabelTemplate({ labelData, scale = 1, isSmall = false })
   };
 
   if (isSmall) {
-    // Small label format (0.66" x 3.4") - only name and DOB
+    // Small label format for 29mm × 90.3mm paper (Brother DK-1201)
     return (
       <div className="blood-label fade-in" style={style}>
         <div className="blood-label-body" style={{ 
-          width: '245px', 
-          height: '48px', 
+          width: '256px', 
+          height: '82px', 
           border: '1px solid #000',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
           alignItems: 'center',
-          padding: '6px 8px',
+          padding: '6px 10px',
           backgroundColor: '#fff',
           fontSize: '10px'
         }}>
           {/* Patient Name */}
           <div style={{ 
-            fontSize: '11px', 
+            fontSize: '12px', 
             fontWeight: '900', 
             letterSpacing: '0.01em', 
             lineHeight: '1.1', 
@@ -51,18 +51,20 @@ export default function LabelTemplate({ labelData, scale = 1, isSmall = false })
             textAlign: 'center',
             width: '100%',
             overflow: 'hidden',
-            textOverflow: 'ellipsis'
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
           }}>
             {displayName}
           </div>
           
           {/* Date of Birth */}
           <div style={{ 
-            fontSize: '8px', 
+            fontSize: '9px', 
             color: '#333', 
             fontWeight: '600',
             textAlign: 'center',
-            width: '100%'
+            width: '100%',
+            lineHeight: '1.1'
           }}>
             DOB: {displayDob}
           </div>

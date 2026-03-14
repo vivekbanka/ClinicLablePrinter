@@ -69,19 +69,15 @@ export default function LabelPreview() {
   const printViaBrowser = async () => {
     setPrinting(true);
     try {
-      // Create a print-friendly version of the small label
+      // Create a clean print version using the new print media query
       const printContent = document.createElement('div');
       printContent.innerHTML = `
-        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; font-family: 'Inter', sans-serif;">
-          <div style="width: 245px; height: 48px; background: white; border: 1px solid #000; display: flex; flex-direction: column; page-break-after: always;">
-            <div style="flex: 1; padding: 8px 3px; display: flex; flex-direction: column; justify-content: center; text-align: center;">
-              <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.01em; line-height: 1.1; color: #000; word-break: break-word; margin-bottom: 4px;">
-                ${(labelData.patientName || 'PATIENT NAME').toUpperCase()}
-              </div>
-              <div style="font-size: 9px; color: #333; font-weight: 600;">
-                DOB: ${formatDate(labelData.dob)}
-              </div>
-            </div>
+        <div class="label" style="border: 1px solid #000; background: white; flex-direction: column; text-align: center;">
+          <div style="font-size: 14px; font-weight: 900; letter-spacing: 0.01em; line-height: 1.1; color: #000; margin-bottom: 4px; white-space: nowrap;">
+            ${(labelData.patientName || 'PATIENT NAME').toUpperCase()}
+          </div>
+          <div style="font-size: 10px; color: #333; font-weight: 600; line-height: 1.1;">
+            DOB: ${formatDate(labelData.dob)}
           </div>
         </div>
       `;
@@ -125,7 +121,7 @@ export default function LabelPreview() {
 
       setPrintSuccess(true);
       setReprintCount(c => c + 1);
-      showToast('success', 'Print Dialog Opened', 'Select your printer and set paper to 0.66" × 3.4" (Brother DK-1203)');
+      showToast('success', 'Print Dialog Opened', 'For phone/tablet: Set paper size 3.5" × 1.1" (90.3mm × 29mm)');
     } catch (err) {
       showToast('error', 'Print Failed', err.message);
     } finally {

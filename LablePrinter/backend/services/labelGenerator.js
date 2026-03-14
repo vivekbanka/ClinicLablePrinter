@@ -16,12 +16,12 @@ const LABEL = {
   PADDING: 3,
 };
 
-// Small label dimensions for Brother QL-810W DK-1203: 0.66" x 3.4" at 72 DPI (PDF points)
+// Small label dimensions for 29mm × 90.3mm paper (Brother DK-1201)
 const SMALL_LABEL = {
-  WIDTH: 245,    // 3.4 inches * 72 points/inch
-  HEIGHT: 48,    // 0.66 inches * 72 points/inch
+  WIDTH: 256,     // 90.3mm * 2.835 points/mm (PDF points)
+  HEIGHT: 82,    // 29mm * 2.835 points/mm (PDF points)
   MARGIN: 3,     // 3pt margin
-  PADDING: 2,
+  PADDING: 3,
 };
 
 /**
@@ -233,7 +233,7 @@ async function generateLabel(data) {
 }
 
 /**
- * Generate small 0.66" x 3.4" label for Brother QL-810W DK-1203 with only name and DOB
+ * Generate small compact label for blood draw tubes with only name and DOB
  * @param {object} data - Label data
  * @param {string} data.patientName - Full patient name
  * @param {string} data.dob - Date of birth
@@ -242,7 +242,7 @@ async function generateLabel(data) {
 async function generateSmallLabel(data) {
   const { patientName, dob } = data;
 
-  logger.info(`Generating small label for: ${patientName}`);
+  logger.info(`Generating small blood draw tube label for: ${patientName}`);
 
   return new Promise((resolve, reject) => {
     const buffers = [];
@@ -268,12 +268,12 @@ async function generateSmallLabel(data) {
     // ── Border ────────────────────────────────────────────────────────────
     doc.rect(1, 1, W - 2, H - 2).lineWidth(0.5).stroke('#000000');
 
-    // ── Patient Name (large text) ───────────────────────────────────────
+    // ── Patient Name (text for 29mm × 90.3mm paper) ───────────────────────────────
     doc.font('Helvetica-Bold')
-       .fontSize(12)
+       .fontSize(10)
        .fillColor('#000000')
        .text(
-         truncate(patientName.toUpperCase(), 35),
+         truncate(patientName.toUpperCase(), 30),
          M,
          M + 8,
          { width: W - M * 2, align: 'center', lineBreak: false }
@@ -281,12 +281,12 @@ async function generateSmallLabel(data) {
 
     // ── DOB ───────────────────────────────────────────────────────────────
     doc.font('Helvetica')
-       .fontSize(9)
+       .fontSize(8)
        .fillColor('#333333')
        .text(
          `DOB: ${dob}`,
          M,
-         M + 26,
+         M + 28,
          { width: W - M * 2, align: 'center', lineBreak: false }
        );
 
